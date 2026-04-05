@@ -6,7 +6,6 @@ import pandas as pd
 # =====================================================================
 st.set_page_config(page_title="Painel ILTB - Nova Iguaçu", page_icon="🏥", layout="wide")
 
-# Lista completa de unidades fornecida
 COFRE_DE_ACESSOS = {
     "heraldo_admin": "TODAS",
     "ist_hgni": "AMBULATORIO DE IST DO HGNI",
@@ -68,7 +67,7 @@ COFRE_DE_ACESSOS = {
     "ubs_santaclara": "UBS SANTA CLARA DE VILA NOVA",
     "ubs_vilajurema": "UBS VILA JUREMA",
     "uni_pedreira": "UNIDADE SHOPPING DA PEDREIRA",
-    "usf_engenho": "USF ENGENHO Pequeno",
+    "usf_engenho": "USF ENGENHO PEQUENO",
     "usf_lino": "USF LINO VILELA",
     "usf_k11": "USF PADRE MANOEL MONTEIRO (K11)",
     "usf_palhada": "USF PALHADA",
@@ -84,10 +83,10 @@ COFRE_DE_ACESSOS = {
 # =====================================================================
 @st.cache_data(ttl=60)
 def carregar_todos_os_dados():
-    # IDs DA PLANILHA (Verifique se estão corretos)
+    # IDs DA PLANILHA 
     SHEET_ID = "1A6uPoNNsz-5SzDRvZZfurYxt7NOzv73Dtde-GEsoV6o" 
     GID_PACIENTES = "0"
-    GID_EVO = "355108392" # <-- COLOQUE O SEU GID AQUI!
+    GID_EVO = "355108392" # <--- NÃO ESQUECER DE COLOCAR SEU GID AQUI
     
     url_pacientes = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID_PACIENTES}"
     url_evolucoes = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID_EVO}"
@@ -146,7 +145,9 @@ else:
         # --- FILTROS SUPERIORES ---
         st.write("### 🔎 Filtros de Auditoria")
         cf1, cf2 = st.columns(2)
-        opcoes_sit = ["Todas"] + sorted(df_pacientes["Situação"].unique().tolist())
+        
+        # Correção Aplicada Aqui: ignorando células vazias para não dar erro
+        opcoes_sit = ["Todas"] + sorted(df_pacientes["Situação"].dropna().astype(str).unique().tolist())
         filtro_sit = cf1.selectbox("Situação do Tratamento:", opcoes_sit)
         
         df_filtrado = df_pacientes.copy()
@@ -159,31 +160,36 @@ else:
         with aba1:
             st.metric("Pacientes no Filtro", len(df_filtrado))
             colunas_ver = ["Data Notificação", "Unidade de Tratamento", "Nome do Paciente", "CNS", "Esquema TPT", "Situação"]
+            
+            # Garantir que as colunas existam antes de mostrar para não dar erro
+            colunas_ver = [c for c in colunas_ver if c in df_filtrado.columns]
             st.dataframe(df_filtrado[colunas_ver], use_container_width=True, hide_index=True)
 
         with aba2:
             st.write("### Pesquisa Individual")
-            df_filtrado["Busca"] = df_filtrado["Nome do Paciente"] + " | " + df_filtrado["CNS"].astype(str)
-            pac_sel = st.selectbox("Selecione o Paciente:", ["-- Selecione --"] + list(df_filtrado["Busca"].unique()))
+            df_filtrado["Busca"] = df_filtrado["Nome do Paciente"].astype(str) + " | " + df_filtrado["CNS"].astype(str)
+            
+            # Correção de ordenação para a busca
+            lista_pacientes = sorted(df_filtrado["Busca"].dropna().astype(str).unique().tolist())
+            pac_sel = st.selectbox("Selecione o Paciente:", ["-- Selecione --"] + lista_pacientes)
 
             if pac_sel != "-- Selecione --":
                 id_limpo_busca = "".join(filter(str.isdigit, pac_sel.split("|")[1]))
                 
-                # --- NOVIDADE: CABEÇALHO COM UNIDADE ---
                 info_pac = df_pacientes[df_pacientes["_id_limpo"] == id_limpo_busca].iloc[0]
                 
-                st.info(f"📍 **Unidade de Notificação:** {info_pac['Unidade de Tratamento']}")
+                st.info(f"📍 **Unidade de Notificação:** {info_pac.get('Unidade de Tratamento', 'Não Informada')}")
                 
                 c_a, c_b, c_c = st.columns(3)
-                c_a.write(f"**Paciente:** {info_pac['Nome do Paciente']}")
-                c_b.write(f"**Data de Início:** {info_pac['Data Notificação']}")
-                c_c.write(f"**Status Atual:** {info_pac['Situação']}")
+                c_a.write(f"**Paciente:** {info_pac.get('Nome do Paciente', '-')}")
+                c_b.write(f"**Data de Início:** {info_pac.get('Data Notificação', '-')}")
+                c_c.write(f"**Status Atual:** {info_pac.get('Situação', '-')}")
                 
                 st.write("---")
-                # Evoluções
+                
                 evos = df_evolucoes[df_evolucoes["_id_limpo"] == id_limpo_busca]
                 if evos.empty:
-                    st.warning("Sem evoluções registradas.")
+                    st.warning("Sem evoluções registradas para este paciente.")
                 else:
                     for _, row in evos.sort_values(by=evos.columns[0], ascending=False).iterrows():
                         with st.expander(f"🔹 {row.get('Data da Evolução', 'S/D')} - {row.get('Tipo/Mês', 'Evolução')}"):
@@ -192,7 +198,6 @@ else:
 
         with aba3:
             st.write("### Relatório Cruzado de Evoluções")
-            # Une Pacientes com Evoluções para auditoria completa
             df_audit = pd.merge(
                 df_filtrado[["_id_limpo", "Nome do Paciente", "Unidade de Tratamento"]],
                 df_evolucoes,
@@ -202,4 +207,4 @@ else:
             st.dataframe(df_audit.drop(columns=["_id_limpo"]), use_container_width=True, hide_index=True)
 
     except Exception as e:
-        st.error(f"Erro ao carregar dados: {e}")
+        st.error(f"Erro ao carregar dados. Detalhe técnico: {e}")
