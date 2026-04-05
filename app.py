@@ -7,17 +7,12 @@ import pandas as pd
 st.set_page_config(page_title="Painel ILTB - Nova Iguaçu", page_icon="🏥", layout="wide")
 
 COFRE_DE_ACESSOS = {
-    # ACESSO MESTRE DA COORDENAÇÃO
     "heraldo_admin": "TODAS",
-    
-    # HOSPITAIS, MATERNIDADES E CENTROS
     "ist_hgni": "AMBULATORIO DE IST DO HGNI",
     "cav_mulher": "CENTRO DE APOIO E VALORIZAÇÃO DA MULHER (CAV MULHER)",
     "cta_vasco": "CENTRO DE SAÚDE VASCO BARCELOS - CTA",
     "hgni_pep": "HOSPITAL GERAL DE NOVA IGUAÇU (HGNI) - PEP",
     "mat_mariana": "MATERNIDADE MARIANA BULHÕES",
-    
-    # CLÍNICAS DA FAMÍLIA (CF) E 24H
     "cf_carlinhos": "CLÍNICA DA FAMÍLIA 24h CARLINHOS DA TINGUÁ (MIGUEL COUTO)",
     "cf_gisele": "CLÍNICA DA FAMÍLIA 24h GISELE PALHARES (VILA DE CAVA)",
     "cf_adrianopolis": "CLÍNICA DA FAMÍLIA ADRIANÓPOLIS",
@@ -52,15 +47,11 @@ COFRE_DE_ACESSOS = {
     "cf_riodouro": "CLÍNICA DA FAMÍLIA RIO D'OURO",
     "cf_vilaoperaria": "CLÍNICA DA FAMÍLIA VILA OPERÁRIA",
     "cnr_odiceia": "CONSULTORIO NA RUA DA CLINICA ODICEIA MORAES",
-    
-    # POLICLÍNICAS E SUPERCLÍNICAS
     "poli_santarita": "POLICLÍNICA  SANTA RITA",
     "poli_dirceu": "POLICLÍNICA DIRCEU DE AQUINO RAMOS",
     "poli_domwalmor": "POLICLÍNICA GERAL DE NOVA IGUAÇU (DOM WALMOR)",
     "poli_cabucu": "POLICLÍNICA MANOEL B. DE ALMEIDA (CABUÇU)",
     "super_dacyr": "SUPERCLÍNICA DA FAMÍLIA DACYR SOARES - MORRO AGUDO",
-    
-    # UNIDADES BÁSICAS DE SAÚDE (UBS)
     "ubs_moqueta": "UBS ALBERTO SOBRAL (MOQUETÁ)",
     "ubs_austin": "UBS AUSTIN",
     "ubs_ceramica": "UBS CERÂMICA",
@@ -76,8 +67,6 @@ COFRE_DE_ACESSOS = {
     "ubs_santaclara": "UBS SANTA CLARA DE VILA NOVA",
     "ubs_vilajurema": "UBS VILA JUREMA",
     "uni_pedreira": "UNIDADE SHOPPING DA PEDREIRA",
-    
-    # UNIDADES DE SAÚDE DA FAMÍLIA (USF)
     "usf_engenho": "USF ENGENHO PEQUENO",
     "usf_lino": "USF LINO VILELA",
     "usf_k11": "USF PADRE MANOEL MONTEIRO (K11)",
@@ -90,16 +79,14 @@ COFRE_DE_ACESSOS = {
 }
 
 # =====================================================================
-# 2. MOTOR DE BUSCA (RESILIENTE)
+# 2. MOTOR DE BUSCA
 # =====================================================================
 @st.cache_data(ttl=60)
 def carregar_todos_os_dados():
-    # =================================================================
-    # ATENÇÃO HERALDO: COLOQUE SEUS IDs REAIS AQUI ANTES DE SALVAR!
-    # =================================================================
+    # === ATENÇÃO: COLOQUE SEUS IDs AQUI ===
     SHEET_ID = "1A6uPoNNsz-5SzDRvZZfurYxt7NOzv73Dtde-GEsoV6o" 
     GID_PACIENTES = "0"
-    GID_EVO = "355108392"
+    GID_EVO = "355108392" 
     
     url_pacientes = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID_PACIENTES}"
     url_evolucoes = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID_EVO}"
@@ -107,7 +94,6 @@ def carregar_todos_os_dados():
     df_pac = pd.read_csv(url_pacientes)
     df_evo = pd.read_csv(url_evolucoes)
     
-    # Limpa espaços em branco nos nomes das colunas para evitar erros
     df_pac.columns = df_pac.columns.str.strip()
     df_evo.columns = df_evo.columns.str.strip()
     
@@ -121,7 +107,7 @@ if "unidade_logada" not in st.session_state:
 
 if st.session_state["unidade_logada"] is None:
     st.title("🔒 Acesso Restrito - Monitoramento ILTB")
-    st.write("Digite a senha fornecida pela Coordenação de Vigilância para acessar os prontuários da sua Unidade.")
+    st.write("Digite a senha fornecida pela Coordenação para acessar os prontuários da sua Unidade.")
     
     senha_digitada = st.text_input("Senha de Acesso", type="password")
     
@@ -133,7 +119,7 @@ if st.session_state["unidade_logada"] is None:
             st.error("❌ Senha incorreta ou Unidade não encontrada.")
 
 # =====================================================================
-# 4. PAINEL PRINCIPAL
+# 4. PAINEL PRINCIPAL E AUDITORIA
 # =====================================================================
 else:
     unidade = st.session_state["unidade_logada"]
@@ -149,84 +135,114 @@ else:
     st.divider()
 
     try:
-        with st.spinner('Puxando prontuários da Nuvem...'):
+        with st.spinner('Puxando prontuários e cruzando dados da Nuvem...'):
             df_pacientes, df_evolucoes = carregar_todos_os_dados()
         
-        # Filtro de Unidade
+        # Filtro de Segurança da Unidade
         if unidade != "TODAS":
             df_pacientes = df_pacientes[df_pacientes["Unidade de Tratamento"] == unidade]
             
         if df_pacientes.empty:
             st.warning("Nenhum paciente registrado para esta unidade até o momento.")
         else:
-            # --- SEÇÃO 1: MÉTRICAS ---
-            st.write("### 📊 Indicadores da Unidade")
+            # --- TELA DE FILTROS (NOVIDADE) ---
+            st.write("### 🔎 Filtros de Busca e Auditoria")
+            cf1, cf2 = st.columns(2)
+
+            opcoes_sit = ["Todas as Situações"] + sorted(df_pacientes["Situação"].dropna().unique().tolist())
+            filtro_situacao = cf1.selectbox("Filtrar por Status do Tratamento:", opcoes_sit)
+
+            filtro_unidade = "Todas as Unidades"
+            if unidade == "TODAS":
+                opcoes_uni = ["Todas as Unidades"] + sorted(df_pacientes["Unidade de Tratamento"].dropna().unique().tolist())
+                filtro_unidade = cf2.selectbox("Auditar Unidade Específica:", opcoes_uni)
+
+            # Aplicando os filtros dinâmicos
+            df_filtrado = df_pacientes.copy()
+            if filtro_situacao != "Todas as Situações":
+                df_filtrado = df_filtrado[df_filtrado["Situação"] == filtro_situacao]
+            if filtro_unidade != "Todas as Unidades":
+                df_filtrado = df_filtrado[df_filtrado["Unidade de Tratamento"] == filtro_unidade]
+
+            # --- SEÇÃO 1: MÉTRICAS (Agora são dinâmicas baseadas no filtro) ---
+            st.write("---")
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Total", len(df_pacientes))
-            c2.metric("🟢 Ativos", len(df_pacientes[df_pacientes["Situação"] == "Em andamento"]))
-            c3.metric("🔵 Altas", len(df_pacientes[df_pacientes["Situação"] == "Tratamento Completo"]))
-            c4.metric("🔴 Interrupções", len(df_pacientes[df_pacientes["Situação"] == "Interrupção do tratamento"]))
+            c1.metric("Total de Pacientes (Filtro)", len(df_filtrado))
+            c2.metric("🟢 Em Andamento", len(df_filtrado[df_filtrado["Situação"] == "Em andamento"]))
+            c3.metric("🔵 Altas", len(df_filtrado[df_filtrado["Situação"] == "Tratamento Completo"]))
+            c4.metric("🔴 Interrupções", len(df_filtrado[df_filtrado["Situação"] == "Interrupção do tratamento"]))
 
-            st.divider()
+            st.write("---")
 
-            # --- SEÇÃO 2: CONSULTA DE PRONTUÁRIO ELETRÔNICO ---
-            st.write("### 🔍 Consultar Histórico Clínico (Prontuário)")
-            
-            # Criar identificador único (Nome + CNS)
-            df_pacientes["Busca"] = df_pacientes["Nome do Paciente"] + " | " + df_pacientes["CNS"].astype(str)
-            
-            paciente_selecionado = st.selectbox("Selecione um paciente para ver a evolução completa:", 
-                                                ["-- Selecione --"] + list(df_pacientes["Busca"].unique()))
+            # --- SISTEMA DE ABAS (TABS) ---
+            aba1, aba2, aba3 = st.tabs(["📋 1. Lista Geral", "🔍 2. Prontuário Individual", "📑 3. Auditoria de Evoluções"])
 
-            if paciente_selecionado != "-- Selecione --":
-                id_busca = paciente_selecionado.split("|")[1].strip()
+            with aba1:
+                st.write("*(Dica: Clique no título das colunas para ordenar alfabeticamente ou por data).*")
+                # Adicionada a coluna "Unidade de Tratamento" na visualização geral
+                colunas_mostrar = ["Data Notificação", "Unidade de Tratamento", "Nome do Paciente", "CNS", "Esquema TPT", "Situação"]
                 
-                # Identifica coluna de ID automaticamente
+                # Para evitar erro se a coluna não existir perfeitamente
+                colunas_mostrar = [c for c in colunas_mostrar if c in df_filtrado.columns]
+                
+                st.dataframe(df_filtrado[colunas_mostrar], use_container_width=True, hide_index=True)
+
+            with aba2:
+                st.write("Selecione um paciente para ver a linha do tempo organizada das consultas dele.")
+                df_filtrado["Busca"] = df_filtrado["Nome do Paciente"] + " | " + df_filtrado["CNS"].astype(str)
+                pac_sel = st.selectbox("Buscar Paciente:", ["-- Selecione --"] + list(df_filtrado["Busca"].unique()))
+
+                if pac_sel != "-- Selecione --":
+                    id_busca = pac_sel.split("|")[1].strip()
+                    col_id_evo = [c for c in df_evolucoes.columns if "CNS" in c or "CPF" in c][0]
+                    df_evolucoes["_id_limpo"] = df_evolucoes[col_id_evo].astype(str).str.replace(r'\D', '', regex=True)
+                    id_busca_limpo = "".join(filter(str.isdigit, id_busca))
+                    
+                    evo_pac = df_evolucoes[df_evolucoes["_id_limpo"] == id_busca_limpo]
+                    
+                    if evo_pac.empty:
+                        st.info("Nenhuma evolução registrada para este paciente.")
+                    else:
+                        evo_pac = evo_pac.sort_values(by=evo_pac.columns[0], ascending=False)
+                        for _, row in evo_pac.iterrows():
+                            with st.expander(f"🔹 {row.get('Data da Evolução', '-')} - {row.get('Tipo/Mês', '-')} ({row.get('Situação', '-')})"):
+                                st.write(f"**Relato Clínico:** {row.get('Relato Clínico', '-')}")
+                                st.info(f"**Conduta:** {row.get('Conduta', '-')}")
+
+            with aba3:
+                st.write("### 📑 Relatório Completo de Acompanhamento")
+                st.write("Esta tabela cruza os pacientes filtrados acima com **todas as evoluções clínicas** registradas no banco. Ideal para auditoria de andamento e interrupções.")
+                
+                # Encontrar ID limpo dos pacientes filtrados
+                col_id_pac = [c for c in df_filtrado.columns if "CNS" in c or "CPF" in c][0]
+                df_filtrado["_id_limpo"] = df_filtrado[col_id_pac].astype(str).str.replace(r'\D', '', regex=True)
+                
+                # Encontrar ID limpo das evoluções
                 col_id_evo = [c for c in df_evolucoes.columns if "CNS" in c or "CPF" in c][0]
+                df_evolucoes["_id_limpo"] = df_evolucoes[col_id_evo].astype(str).str.replace(r'\D', '', regex=True)
                 
-                # Filtra evoluções por número limpo (apenas dígitos)
-                df_evolucoes[col_id_evo] = df_evolucoes[col_id_evo].astype(str).str.replace(r'\D', '', regex=True)
-                id_busca_limpo = "".join(filter(str.isdigit, id_busca))
+                # Cruzar as duas planilhas usando o ID Limpo
+                df_auditoria = pd.merge(
+                    df_filtrado[["_id_limpo", "Nome do Paciente", "Unidade de Tratamento"]],
+                    df_evolucoes,
+                    on="_id_limpo",
+                    how="inner"
+                )
                 
-                evolucoes_pac = df_evolucoes[df_evolucoes[col_id_evo] == id_busca_limpo]
-                
-                if evolucoes_pac.empty:
-                    st.info("Nenhuma evolução clínica registrada além do cadastro inicial.")
+                if df_auditoria.empty:
+                    st.info("Não há evoluções clínicas para os pacientes no filtro atual.")
                 else:
-                    st.write(f"#### 📅 Linha do Tempo: {paciente_selecionado.split('|')[0].strip()}")
+                    # Organizar as colunas finais do Relatório de Auditoria
+                    colunas_audit = [
+                        "Unidade de Tratamento", "Nome do Paciente", "Data da Evolução", 
+                        "Tipo/Mês", "Situação", "Relato Clínico", "Conduta"
+                    ]
+                    colunas_audit = [c for c in colunas_audit if c in df_auditoria.columns]
                     
-                    evolucoes_pac = evolucoes_pac.sort_values(by=evolucoes_pac.columns[0], ascending=False)
+                    # Ordenar por unidade, nome e data
+                    df_auditoria = df_auditoria.sort_values(by=["Unidade de Tratamento", "Nome do Paciente"])
                     
-                    for _, row in evolucoes_pac.iterrows():
-                        data_atend = row.get("Data da Evolução", "Data não informada")
-                        tipo_mes = row.get("Tipo/Mês", "Evolução")
-                        situacao = row.get("Situação", "-")
-                        relato = row.get("Relato Clínico", "-")
-                        conduta = row.get("Conduta", "-")
-                        
-                        with st.expander(f"🔹 {data_atend} - {tipo_mes}"):
-                            st.write(f"**Situação na data:** {situacao}")
-                            st.write(f"**Relato Clínico:** {relato}")
-                            st.info(f"**Conduta:** {conduta}")
-
-            st.divider()
-
-            # --- SEÇÃO 3: LISTA GERAL ---
-            st.write("### 📋 Lista Geral de Pacientes")
-            st.write("*(Modo de Leitura: Você pode pesquisar e clicar nas colunas para ordenar).*")
-            
-            colunas_para_mostrar = [
-                "Data Notificação", "Nome do Paciente", "CNS", "Esquema TPT", 
-                "Data Início", "Dose Orientada", "Situação"
-            ]
-            
-            st.dataframe(
-                df_pacientes[colunas_para_mostrar], 
-                use_container_width=True, 
-                hide_index=True
-            )
-            
-            st.caption("Criado por Heraldo Maia - Versão 1.0 (Visualização via Python/Streamlit)")
+                    st.dataframe(df_auditoria[colunas_audit], use_container_width=True, hide_index=True)
 
     except Exception as e:
-        st.error(f"Erro ao conectar com o Banco Central. Detalhe técnico: {e}")
+        st.error(f"Erro no processamento dos dados. Detalhe técnico: {e}")
