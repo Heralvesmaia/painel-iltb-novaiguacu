@@ -14,22 +14,26 @@ COFRE_DE_ACESSOS = {
 }
 
 # =====================================================================
-# 2. MOTOR DE BUSCA (DUPLO: PACIENTES E EVOLUÇÕES)
+# 2. MOTOR DE BUSCA (RESILIENTE A ERROS DE CABEÇALHO)
 # =====================================================================
-@st.cache_data(ttl=60) # Atualiza a cada 1 minuto
+@st.cache_data(ttl=60)
 def carregar_todos_os_dados():
-    # SUBSTITUA PELO SEU ID REAL
+    # SEU ID DA PLANILHA
     SHEET_ID = "1A6uPoNNsz-5SzDRvZZfurYxt7NOzv73Dtde-GEsoV6o" 
     
-    # GIDs das abas (AJUSTE O GID_EVO COM O NÚMERO QUE VOCÊ PEGOU)
+    # GIDs das abas (CONFIRME O GID DA ABA EVOLUCOES NO NAVEGADOR)
     GID_PACIENTES = "0"
-    GID_EVO = "355108392" 
+    GID_EVO = "355108392" # <-- TROQUE PELO NÚMERO APÓS #gid=
 
     url_pacientes = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID_PACIENTES}"
     url_evolucoes = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID_EVO}"
     
     df_pac = pd.read_csv(url_pacientes)
     df_evo = pd.read_csv(url_evolucoes)
+    
+    # TRUQUE DE MESTRE: Limpa espaços em branco nos nomes das colunas
+    df_pac.columns = df_pac.columns.str.strip()
+    df_evo.columns = df_evo.columns.str.strip()
     
     return df_pac, df_evo
 
@@ -80,26 +84,45 @@ else:
         # --- SEÇÃO 2: CONSULTA DE PRONTUÁRIO ELETRÔNICO ---
         st.write("### 🔍 Consultar Histórico Clínico (Prontuário)")
         
-        # Criar lista para busca: "Nome do Paciente | CNS"
+        # Criar identificador único (Nome + CNS)
         df_pacientes["Busca"] = df_pacientes["Nome do Paciente"] + " | " + df_pacientes["CNS"].astype(str)
-        paciente_selecionado = st.selectbox("Selecione um paciente para ver a evolução completa:", ["-- Selecione --"] + list(df_pacientes["Busca"].unique()))
+        
+        paciente_selecionado = st.selectbox("Selecione um paciente para ver a evolução completa:", 
+                                            ["-- Selecione --"] + list(df_pacientes["Busca"].unique()))
 
         if paciente_selecionado != "-- Selecione --":
-            cns_busca = paciente_selecionado.split(" | ")[1]
+            # Pega o CNS (tudo o que vem depois do '|') e remove espaços
+            id_busca = paciente_selecionado.split("|")[1].strip()
             
-            # Puxar Evoluções do paciente (Comparando com a coluna CNS/CPF do Paciente na aba Evoluções)
-            # Nota: O nome da coluna na aba Evolucoes deve ser exatamente "CNS/CPF do Paciente"
-            evolucoes_pac = df_evolucoes[df_evolucoes["CNS/CPF do Paciente"].astype(str).str.contains(cns_busca)]
+            # Identifica automaticamente qual é a coluna de ID na aba Evoluções (mesmo que o nome mude um pouco)
+            col_id_evo = [c for c in df_evolucoes.columns if "CNS" in c or "CPF" in c][0]
+            
+            # Filtra as evoluções comparando números limpos
+            df_evolucoes[col_id_evo] = df_evolucoes[col_id_evo].astype(str).str.replace(r'\D', '', regex=True)
+            id_busca_limpo = "".join(filter(str.isdigit, id_busca))
+            
+            evolucoes_pac = df_evolucoes[df_evolucoes[col_id_evo] == id_busca_limpo]
             
             if evolucoes_pac.empty:
                 st.info("Nenhuma evolução clínica registrada além do cadastro inicial.")
             else:
-                st.write(f"#### 📅 Linha do Tempo: {paciente_selecionado.split(' | ')[0]}")
-                for i, row in evolucoes_pac.sort_values(by="Data da Evolução", ascending=False).iterrows():
-                    with st.expander(f"🔹 {row['Data da Evolução']} - {row['Tipo/Mês']}"):
-                        st.write(f"**Situação na data:** {row['Situação']}")
-                        st.write(f"**Relato Clínico:** {row['Relato Clínico']}")
-                        st.success(f"**Conduta:** {row['Conduta']}")
+                st.write(f"#### 📅 Linha do Tempo: {paciente_selecionado.split('|')[0].strip()}")
+                
+                # Ordenar da evolução mais recente para a mais antiga
+                evolucoes_pac = evolucoes_pac.sort_values(by=evolucoes_pac.columns[0], ascending=False)
+                
+                for _, row in evolucoes_pac.iterrows():
+                    # Ajuste dinâmico de nomes de colunas para exibição
+                    data_atend = row.get("Data da Evolução", "Data não informada")
+                    tipo_mes = row.get("Tipo/Mês", "Evolução")
+                    situacao = row.get("Situação", "-")
+                    relato = row.get("Relato Clínico", "-")
+                    conduta = row.get("Conduta", "-")
+                    
+                    with st.expander(f"🔹 {data_atend} - {tipo_mes}"):
+                        st.write(f"**Situação na data:** {situacao}")
+                        st.write(f"**Relato Clínico:** {relato}")
+                        st.info(f"**Conduta:** {conduta}")
 
         st.divider()
 
