@@ -99,7 +99,7 @@ def carregar_todos_os_dados():
     # =================================================================
     SHEET_ID = "1A6uPoNNsz-5SzDRvZZfurYxt7NOzv73Dtde-GEsoV6o" 
     GID_PACIENTES = "0"
-    GID_EVO = "NUMERO_DO_GID_DA_ABA_EVOLUCOES" # 355108392<-- COLOQUE O NUMERO AQUI!
+    GID_EVO = "355108392"
     
     url_pacientes = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID_PACIENTES}"
     url_evolucoes = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID_EVO}"
