@@ -21,7 +21,7 @@ COFRE_DE_ACESSOS = {
 @st.cache_data(ttl=300) # O Python guarda os dados por 5 min para não sobrecarregar o Google
 def carregar_dados():
     # COLE AQUI O ID DA SUA PLANILHA (O mesmo que usamos no Google Apps Script)
-    SHEET_ID = "COLE_O_ID_DA_SUA_PLANILHA_AQUI"
+    SHEET_ID = "https://docs.google.com/spreadsheets/d/1A6uPoNNsz-5SzDRvZZfurYxt7NOzv73Dtde-GEsoV6o/edit?gid=0#gid=0"
     
     # O Python usa o link de exportação do Google Sheets para puxar os dados como texto (rápido e invisível)
     url_pacientes = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
