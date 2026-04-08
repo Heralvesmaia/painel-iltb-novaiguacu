@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import re
 
 # =====================================================================
 # 1. CONFIGURAÇÃO DA PÁGINA E COFRE DE SENHAS
@@ -11,6 +12,8 @@ COFRE_DE_ACESSOS = {
     "ist_hgni": "AMBULATORIO DE IST DO HGNI",
     "cav_mulher": "CENTRO DE APOIO E VALORIZAÇÃO DA MULHER (CAV MULHER)",
     "cta_vasco": "CENTRO DE SAÚDE VASCO BARCELOS - CTA",
+    "hgni_pep": "HOSPITAL GERAL DE NOVA IGUAÇU (HGNI) - PEP",
+    "mat_mariana": "MATERNIDADE MARIANA BULHÕES",
     "cf_carlinhos": "CLÍNICA DA FAMÍLIA 24h CARLINHOS DA TINGUÁ (MIGUEL COUTO)",
     "cf_gisele": "CLÍNICA DA FAMÍLIA 24h GISELE PALHARES (VILA DE CAVA)",
     "cf_adrianopolis": "CLÍNICA DA FAMÍLIA ADRIANÓPOLIS",
@@ -45,8 +48,6 @@ COFRE_DE_ACESSOS = {
     "cf_riodouro": "CLÍNICA DA FAMÍLIA RIO D'OURO",
     "cf_vilaoperaria": "CLÍNICA DA FAMÍLIA VILA OPERÁRIA",
     "cnr_odiceia": "CONSULTORIO NA RUA DA CLINICA ODICEIA MORAES",
-    "hgni_pep": "HOSPITAL GERAL DE NOVA IGUAÇU (HGNI) - PEP",
-    "mat_mariana": "MATERNIDADE MARIANA BULHÕES",
     "poli_santarita": "POLICLÍNICA  SANTA RITA",
     "poli_dirceu": "POLICLÍNICA DIRCEU DE AQUINO RAMOS",
     "poli_domwalmor": "POLICLÍNICA GERAL DE NOVA IGUAÇU (DOM WALMOR)",
@@ -79,14 +80,14 @@ COFRE_DE_ACESSOS = {
 }
 
 # =====================================================================
-# 2. MOTOR DE BUSCA
+# 2. MOTOR DE BUSCA (Aba 1 e Aba 2)
 # =====================================================================
 @st.cache_data(ttl=60)
 def carregar_todos_os_dados():
     # IDs DA PLANILHA 
     SHEET_ID = "1A6uPoNNsz-5SzDRvZZfurYxt7NOzv73Dtde-GEsoV6o" 
     GID_PACIENTES = "0"
-    GID_EVO = "355108392" # <--- NÃO ESQUECER DE COLOCAR SEU GID AQUI
+    GID_EVO = "355108392" # <--- NÃO ESQUEÇA
     
     url_pacientes = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID_PACIENTES}"
     url_evolucoes = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID_EVO}"
@@ -106,8 +107,16 @@ def carregar_todos_os_dados():
     
     return df_pac, df_evo
 
+# Função auxiliar para encontrar os nomes dinâmicos das colunas da Aba Evolucoes
+def encontrar_coluna(df, palavras_chave):
+    for col in df.columns:
+        for palavra in palavras_chave:
+            if palavra.lower() in col.lower():
+                return col
+    return df.columns[0] # Fallback
+
 # =====================================================================
-# 3. TELA DE LOGIN
+# 3. TELA DE LOGIN E PAINEL
 # =====================================================================
 if "unidade_logada" not in st.session_state:
     st.session_state["unidade_logada"] = None
@@ -121,10 +130,6 @@ if st.session_state["unidade_logada"] is None:
             st.rerun()
         else:
             st.error("❌ Senha inválida.")
-
-# =====================================================================
-# 4. PAINEL DE CONTROLE
-# =====================================================================
 else:
     unidade = st.session_state["unidade_logada"]
     
@@ -134,72 +139,108 @@ else:
     if st.sidebar.button("Sair / Logout"):
         st.session_state["unidade_logada"] = None
         st.rerun()
+        
+    # BOTÃO MÁGICO DE SINCRONIZAÇÃO DA NUVEM
+    if st.sidebar.button("🔄 Sincronizar Dados Agora"):
+        st.cache_data.clear()
+        st.rerun()
 
     try:
         df_pacientes, df_evolucoes = carregar_todos_os_dados()
         
-        # Filtro por unidade (se não for admin)
+        # Filtro por unidade
+        col_uni_tratamento = encontrar_coluna(df_pacientes, ["Unid", "Tratamento"])
         if unidade != "TODAS":
-            df_pacientes = df_pacientes[df_pacientes["Unidade de Tratamento"] == unidade]
+            df_pacientes = df_pacientes[df_pacientes[col_uni_tratamento] == unidade]
 
         # --- FILTROS SUPERIORES ---
         st.write("### 🔎 Filtros de Auditoria")
         cf1, cf2 = st.columns(2)
         
-        # Correção Aplicada Aqui: ignorando células vazias para não dar erro
-        opcoes_sit = ["Todas"] + sorted(df_pacientes["Situação"].dropna().astype(str).unique().tolist())
+        col_situacao = encontrar_coluna(df_pacientes, ["Situa"])
+        opcoes_sit = ["Todas"] + sorted(df_pacientes[col_situacao].dropna().astype(str).unique().tolist())
         filtro_sit = cf1.selectbox("Situação do Tratamento:", opcoes_sit)
         
         df_filtrado = df_pacientes.copy()
         if filtro_sit != "Todas":
-            df_filtrado = df_filtrado[df_filtrado["Situação"] == filtro_sit]
+            df_filtrado = df_filtrado[df_filtrado[col_situacao] == filtro_sit]
 
         # --- ABAS ---
         aba1, aba2, aba3 = st.tabs(["📋 Lista Geral", "🔍 Prontuário Detalhado", "📑 Auditoria Geral"])
 
+        # Identificando colunas principais dinamicamente
+        col_nome = encontrar_coluna(df_filtrado, ["Nome de Reg", "Nome do Pac"])
+        col_data_notif = encontrar_coluna(df_filtrado, ["Data da Notif", "Data Notif"])
+        col_cns = encontrar_coluna(df_filtrado, ["CNS", "Cartão"])
+        col_esquema = encontrar_coluna(df_filtrado, ["Medicamento", "Esquema"])
+
         with aba1:
             st.metric("Pacientes no Filtro", len(df_filtrado))
-            colunas_ver = ["Data Notificação", "Unidade de Tratamento", "Nome do Paciente", "CNS", "Esquema TPT", "Situação"]
-            
-            # Garantir que as colunas existam antes de mostrar para não dar erro
-            colunas_ver = [c for c in colunas_ver if c in df_filtrado.columns]
+            colunas_ver = [col_data_notif, col_uni_tratamento, col_nome, col_cns, col_esquema, col_situacao]
+            colunas_ver = [c for c in colunas_ver if c in df_filtrado.columns] # Garante que existem
             st.dataframe(df_filtrado[colunas_ver], use_container_width=True, hide_index=True)
 
         with aba2:
-            st.write("### Pesquisa Individual")
-            df_filtrado["Busca"] = df_filtrado["Nome do Paciente"].astype(str) + " | " + df_filtrado["CNS"].astype(str)
+            st.write("### Pesquisa Individual e Acompanhamento Clínico")
+            df_filtrado["Busca"] = df_filtrado[col_nome].astype(str) + " | " + df_filtrado[col_cns].astype(str)
             
-            # Correção de ordenação para a busca
             lista_pacientes = sorted(df_filtrado["Busca"].dropna().astype(str).unique().tolist())
             pac_sel = st.selectbox("Selecione o Paciente:", ["-- Selecione --"] + lista_pacientes)
 
             if pac_sel != "-- Selecione --":
                 id_limpo_busca = "".join(filter(str.isdigit, pac_sel.split("|")[1]))
-                
                 info_pac = df_pacientes[df_pacientes["_id_limpo"] == id_limpo_busca].iloc[0]
                 
-                st.info(f"📍 **Unidade de Notificação:** {info_pac.get('Unidade de Tratamento', 'Não Informada')}")
+                st.info(f"📍 **Unidade de Notificação:** {info_pac.get(col_uni_tratamento, '-')}")
                 
                 c_a, c_b, c_c = st.columns(3)
-                c_a.write(f"**Paciente:** {info_pac.get('Nome do Paciente', '-')}")
-                c_b.write(f"**Data de Início:** {info_pac.get('Data Notificação', '-')}")
-                c_c.write(f"**Status Atual:** {info_pac.get('Situação', '-')}")
+                c_a.write(f"**Paciente:** {info_pac.get(col_nome, '-')}")
+                c_b.write(f"**Início do TPT:** {info_pac.get(col_data_notif, '-')}")
+                c_c.write(f"**Status Atual:** {info_pac.get(col_situacao, '-')}")
                 
                 st.write("---")
                 
                 evos = df_evolucoes[df_evolucoes["_id_limpo"] == id_limpo_busca]
                 if evos.empty:
-                    st.warning("Sem evoluções registradas para este paciente.")
+                    st.warning("Sem evoluções clínicas registradas ou as colunas da planilha não foram encontradas.")
                 else:
-                    for _, row in evos.sort_values(by=evos.columns[0], ascending=False).iterrows():
-                        with st.expander(f"🔹 {row.get('Data da Evolução', 'S/D')} - {row.get('Tipo/Mês', 'Evolução')}"):
-                            st.write(f"**Relato:** {row.get('Relato Clínico', '-')}")
-                            st.info(f"**Conduta:** {row.get('Conduta', '-')}")
+                    # Encontrar colunas de evolução
+                    col_evo_data = encontrar_coluna(evos, ["Data do Atend", "Data da Evol"])
+                    col_evo_tipo = encontrar_coluna(evos, ["Tipo de Evol", "Tipo/Mês"])
+                    col_evo_relato = encontrar_coluna(evos, ["Adesão", "Relato"])
+                    col_evo_conduta = encontrar_coluna(evos, ["Conduta", "Enfermagem"])
+
+                    for _, row in evos.sort_values(by=col_evo_data, ascending=False).iterrows():
+                        data_str = row.get(col_evo_data, 'S/D')
+                        tipo_str = row.get(col_evo_tipo, 'Evolução')
+                        relato_str = str(row.get(col_evo_relato, '-'))
+                        conduta_str = str(row.get(col_evo_conduta, '-'))
+
+                        with st.expander(f"🔹 {data_str} - {tipo_str}"):
+                            # O Pulo do Gato - Destaques Visuais no Python
+                            st.write(f"**Adesão, Queixas e Tolerância (Relato Clínico):**")
+                            st.write(relato_str)
+                            
+                            st.write("") # Espaço
+                            
+                            # Separa e destaca o ALERTA DE DROGA
+                            if "[ALERTA:" in conduta_str:
+                                st.error("⚠️ **ATENÇÃO:** Alteração no Esquema de Drogas reportada nesta consulta!")
+                                conduta_str = re.sub(r'\[ALERTA:.*?\]', '', conduta_str).strip()
+
+                            # Separa e destaca a PRÓXIMA DATA
+                            prox_data_match = re.search(r'\[Próx.*?\]', conduta_str)
+                            if prox_data_match:
+                                texto_data = prox_data_match.group(0).replace('[', '').replace(']', '')
+                                st.warning(f"📅 **AGENDAMENTO:** {texto_data}")
+                                conduta_str = conduta_str.replace(prox_data_match.group(0), '').strip()
+
+                            st.info(f"**Conduta de Enfermagem/Médica:**\n\n{conduta_str}")
 
         with aba3:
             st.write("### Relatório Cruzado de Evoluções")
             df_audit = pd.merge(
-                df_filtrado[["_id_limpo", "Nome do Paciente", "Unidade de Tratamento"]],
+                df_filtrado[["_id_limpo", col_nome, col_uni_tratamento]],
                 df_evolucoes,
                 on="_id_limpo",
                 how="inner"
@@ -207,4 +248,4 @@ else:
             st.dataframe(df_audit.drop(columns=["_id_limpo"]), use_container_width=True, hide_index=True)
 
     except Exception as e:
-        st.error(f"Erro ao carregar dados. Detalhe técnico: {e}")
+        st.error(f"Erro ao carregar os dados. Detalhe técnico: {e}")
