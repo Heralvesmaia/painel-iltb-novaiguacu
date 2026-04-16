@@ -1,251 +1,278 @@
 import streamlit as st
 import pandas as pd
-import re
+import time
 
-# =====================================================================
-# 1. CONFIGURAÇÃO DA PÁGINA E COFRE DE SENHAS
-# =====================================================================
-st.set_page_config(page_title="Painel ILTB - Nova Iguaçu", page_icon="🏥", layout="wide")
+# 1. CONFIGURAÇÃO DA PÁGINA
+st.set_page_config(page_title="SIG-ILTB - Prontuário Eletrônico", layout="wide", page_icon="🔒")
 
-COFRE_DE_ACESSOS = {
-    "heraldo_admin": "TODAS",
-    "ist_hgni": "AMBULATORIO DE IST DO HGNI",
-    "cav_mulher": "CENTRO DE APOIO E VALORIZAÇÃO DA MULHER (CAV MULHER)",
-    "cta_vasco": "CENTRO DE SAÚDE VASCO BARCELOS - CTA",
-    "hgni_pep": "HOSPITAL GERAL DE NOVA IGUAÇU (HGNI) - PEP",
-    "mat_mariana": "MATERNIDADE MARIANA BULHÕES",
-    "cf_carlinhos": "CLÍNICA DA FAMÍLIA 24h CARLINHOS DA TINGUÁ (MIGUEL COUTO)",
-    "cf_gisele": "CLÍNICA DA FAMÍLIA 24h GISELE PALHARES (VILA DE CAVA)",
-    "cf_adrianopolis": "CLÍNICA DA FAMÍLIA ADRIANÓPOLIS",
-    "cf_alianca": "CLÍNICA DA FAMÍLIA ALIANÇA",
-    "cf_corumba": "CLÍNICA DA FAMÍLIA CORUMBÁ",
-    "cf_ceramica": "CLÍNICA DA FAMÍLIA DA CERÂMICA",
-    "cf_dombosco": "CLÍNICA DA FAMÍLIA DOM BOSCO",
-    "cf_ambai": "CLÍNICA DA FAMÍLIA DR MARCO POLO DE GOUVEIA PEREIRA (AMBAÍ)",
-    "cf_delmo": "CLINICA DA FAMILIA Dr. DELMO MOURA SA",
-    "cf_emilia": "CLÍNICA DA FAMÍLIA EMILIA GOMES - CTA",
-    "cf_cacuia": "CLÍNICA DA FAMÍLIA ERALDO SARDINHA (CACUIA)",
-    "cf_figueira": "CLÍNICA DA FAMÍLIA FIGUEIRA",
-    "cf_ivo": "CLINICA DA FAMILIA IVO MANOEL LOPES",
-    "cf_jaceruba": "CLÍNICA DA FAMÍLIA JACERUBA",
-    "cf_palmares": "CLÍNICA DA FAMÍLIA JARDIM  PALMARES",
-    "cf_viga": "CLÍNICA DA FAMÍLIA JARDIM DA VIGA",
-    "cf_iguacu": "CLÍNICA DA FAMÍLIA JARDIM IGUAÇU",
-    "cf_jasmim": "CLÍNICA DA FAMÍLIA JARDIM JASMIM",
-    "cf_roma": "CLÍNICA DA FAMÍLIA JARDIM ROMA",
-    "cf_caicara": "CLÍNICA DA FAMÍLIA JOSÉ RODRIGUES DA SILVA (CAIÇARA)",
-    "cf_km32": "CLÍNICA DA FAMÍLIA KM32",
-    "cf_lagoinha": "CLÍNICA DA FAMÍLIA LAGOINHA",
-    "cf_tingua": "CLÍNICA DA FAMÍLIA MANOEL MOREIRA DE OLIVEIRA (TINGUÁ)",
-    "cf_marfel": "CLÍNICA DA FAMÍLIA MARFEL",
-    "cf_boaesperanca": "CLÍNICA DA FAMÍLIA MARIA UMBELINA (BOA ESPERANÇA)",
-    "cf_geneciano": "CLÍNICA DA FAMÍLIA NÁDIA SILVA DE OLIVEIRA (GENECIANO)",
-    "cf_novaera": "CLÍNICA DA FAMILIA NOVA ERA",
-    "cf_odiceia": "CLINICA DA FAMÍLIA ODICEIA MORAES",
-    "cf_palmeiras": "CLÍNICA DA FAMÍLIA PARQUE DAS PALMEIRAS",
-    "cf_novaamerica": "CLÍNICA DA FAMÍLIA PASTOR IRACY MARCELINO (NOVA AMÉRICA)",
-    "cf_grama": "CLÍNICA DA FAMÍLIA PEDRO ARUME (GRAMA)",
-    "cf_riodouro": "CLÍNICA DA FAMÍLIA RIO D'OURO",
-    "cf_vilaoperaria": "CLÍNICA DA FAMÍLIA VILA OPERÁRIA",
-    "cnr_odiceia": "CONSULTORIO NA RUA DA CLINICA ODICEIA MORAES",
-    "poli_santarita": "POLICLÍNICA  SANTA RITA",
-    "poli_dirceu": "POLICLÍNICA DIRCEU DE AQUINO RAMOS",
-    "poli_domwalmor": "POLICLÍNICA GERAL DE NOVA IGUAÇU (DOM WALMOR)",
-    "poli_cabucu": "POLICLÍNICA MANOEL B. DE ALMEIDA (CABUÇU)",
-    "super_dacyr": "SUPERCLÍNICA DA FAMÍLIA DACYR SOARES - MORRO AGUDO",
-    "ubs_moqueta": "UBS ALBERTO SOBRAL (MOQUETÁ)",
-    "ubs_austin": "UBS AUSTIN",
-    "ubs_ceramica": "UBS CERÂMICA",
-    "ubs_cobrex": "UBS COBREX",
-    "ubs_paraiso": "UBS JARDIM PARAÍSO (Antiga Patrícia Marinho)",
-    "ubs_santaeugenia": "UBS JARDIM SANTA EUGÊNIA",
-    "ubs_julia": "UBS JÚLIA TÁVORA",
-    "ubs_manoel": "UBS MANOEL REZENDE",
-    "ubs_montelibano": "UBS MONTE LÍBANO (PROF° RUTILHES DOS SANTOS)",
-    "ubs_novabrasilia": "UBS NOVA BRASÍLIA",
-    "ubs_prata": "UBS PRATA",
-    "ubs_ranchofundo": "UBS RANCHO FUNDO",
-    "ubs_santaclara": "UBS SANTA CLARA DE VILA NOVA",
-    "ubs_vilajurema": "UBS VILA JUREMA",
-    "uni_pedreira": "UNIDADE SHOPPING DA PEDREIRA",
-    "usf_engenho": "USF ENGENHO PEQUENO",
-    "usf_lino": "USF LINO VILELA",
-    "usf_k11": "USF PADRE MANOEL MONTEIRO (K11)",
-    "usf_palhada": "USF PALHADA",
-    "usf_todos": "USF PARQUE TODOS OS SANTOS",
-    "usf_rodilandia": "USF RODILÂNDIA",
-    "usf_guandu": "USF SANTA CLARA DO GUANDÚ",
-    "usf_valverde": "USF VALVERDE",
-    "usf_vilatania": "USF VILA TÂNIA"
+# 2. CENTRAL DE ACESSOS
+USUARIOS = {
+    "heraldo_admin": {"senha": "admin123", "nome_oficial": "TODAS"},
+    "ist_hgni": {"senha": "ist_hgni", "nome_oficial": "AMBULATORIO DE IST DO HGNI"},
+    "cav_mulher": {"senha": "cav_mulher", "nome_oficial": "CENTRO DE APOIO E VALORIZAÇÃO DA MULHER (CAV MULHER)"},
+    "cta_vasco": {"senha": "cta_vasco", "nome_oficial": "CENTRO DE SAÚDE VASCO BARCELOS - CTA"},
+    "hgni_pep": {"senha": "hgni_pep", "nome_oficial": "HOSPITAL GERAL DE NOVA IGUAÇU (HGNI) - PEP"},
+    "mat_mariana": {"senha": "mat_mariana", "nome_oficial": "MATERNIDADE MARIANA BULHÕES"},
+    "cf_carlinhos": {"senha": "cf_carlinhos", "nome_oficial": "CLÍNICA DA FAMÍLIA 24h CARLINHOS DA TINGUÁ (MIGUEL COUTO)"},
+    "cf_gisele": {"senha": "cf_gisele", "nome_oficial": "CLÍNICA DA FAMÍLIA 24h GISELE PALHARES (VILA DE CAVA)"},
+    "cf_adrianopolis": {"senha": "cf_adrianopolis", "nome_oficial": "CLÍNICA DA FAMÍLIA ADRIANÓPOLIS"},
+    "cf_alianca": {"senha": "cf_alianca", "nome_oficial": "CLÍNICA DA FAMÍLIA ALIANÇA"},
+    "cf_corumba": {"senha": "cf_corumba", "nome_oficial": "CLÍNICA DA FAMÍLIA CORUMBÁ"},
+    "cf_ceramica": {"senha": "cf_ceramica", "nome_oficial": "CLÍNICA DA FAMÍLIA DA CERÂMICA"},
+    "cf_dombosco": {"senha": "cf_dombosco", "nome_oficial": "CLÍNICA DA FAMÍLIA DOM BOSCO"},
+    "cf_ambai": {"senha": "cf_ambai", "nome_oficial": "CLÍNICA DA FAMÍLIA DR MARCO POLO DE GOUVEIA PEREIRA (AMBAÍ)"},
+    "cf_delmo": {"senha": "cf_delmo", "nome_oficial": "CLINICA DA FAMILIA Dr. DELMO MOURA SA"},
+    "cf_emilia": {"senha": "cf_emilia", "nome_oficial": "CLÍNICA DA FAMÍLIA EMILIA GOMES - CTA"},
+    "cf_cacuia": {"senha": "cf_cacuia", "nome_oficial": "CLÍNICA DA FAMÍLIA ERALDO SARDINHA (CACUIA)"},
+    "cf_figueira": {"senha": "cf_figueira", "nome_oficial": "CLÍNICA DA FAMÍLIA FIGUEIRA"},
+    "cf_ivo": {"senha": "cf_ivo", "nome_oficial": "CLINICA DA FAMILIA IVO MANOEL LOPES"},
+    "cf_jaceruba": {"senha": "cf_jaceruba", "nome_oficial": "CLÍNICA DA FAMÍLIA JACERUBA"},
+    "cf_palmares": {"senha": "cf_palmares", "nome_oficial": "CLÍNICA DA FAMÍLIA JARDIM  PALMARES"},
+    "cf_viga": {"senha": "cf_viga", "nome_oficial": "CLÍNICA DA FAMÍLIA JARDIM DA VIGA"},
+    "cf_iguacu": {"senha": "cf_iguacu", "nome_oficial": "CLÍNICA DA FAMÍLIA JARDIM IGUAÇU"},
+    "cf_jasmim": {"senha": "cf_jasmim", "nome_oficial": "CLÍNICA DA FAMÍLIA JARDIM JASMIM"},
+    "cf_roma": {"senha": "cf_roma", "nome_oficial": "CLÍNICA DA FAMÍLIA JARDIM ROMA"},
+    "cf_caicara": {"senha": "cf_caicara", "nome_oficial": "CLÍNICA DA FAMÍLIA JOSÉ RODRIGUES DA SILVA (CAIÇARA)"},
+    "cf_km32": {"senha": "cf_km32", "nome_oficial": "CLÍNICA DA FAMÍLIA KM32"},
+    "cf_lagoinha": {"senha": "cf_lagoinha", "nome_oficial": "CLÍNICA DA FAMÍLIA LAGOINHA"},
+    "cf_tingua": {"senha": "cf_tingua", "nome_oficial": "CLÍNICA DA FAMÍLIA MANOEL MOREIRA DE OLIVEIRA (TINGUÁ)"},
+    "cf_marfel": {"senha": "cf_marfel", "nome_oficial": "CLÍNICA DA FAMÍLIA MARFEL"},
+    "cf_boaesperanca": {"senha": "cf_boaesperanca", "nome_oficial": "CLÍNICA DA FAMÍLIA MARIA UMBELINA (BOA ESPERANÇA)"},
+    "cf_geneciano": {"senha": "cf_geneciano", "nome_oficial": "CLÍNICA DA FAMÍLIA NÁDIA SILVA DE OLIVEIRA (GENECIANO)"},
+    "cf_novaera": {"senha": "cf_novaera", "nome_oficial": "CLÍNICA DA FAMILIA NOVA ERA"},
+    "cf_odiceia": {"senha": "cf_odiceia", "nome_oficial": "CLINICA DA FAMÍLIA ODICEIA MORAES"},
+    "cf_palmeiras": {"senha": "cf_palmeiras", "nome_oficial": "CLÍNICA DA FAMÍLIA PARQUE DAS PALMEIRAS"},
+    "cf_novaamerica": {"senha": "cf_novaamerica", "nome_oficial": "CLÍNICA DA FAMÍLIA PASTOR IRACY MARCELINO (NOVA AMÉRICA)"},
+    "cf_grama": {"senha": "cf_grama", "nome_oficial": "CLÍNICA DA FAMÍLIA PEDRO ARUME (GRAMA)"},
+    "cf_riodouro": {"senha": "cf_riodouro", "nome_oficial": "CLÍNICA DA FAMÍLIA RIO D'OURO"},
+    "cf_vilaoperaria": {"senha": "cf_vilaoperaria", "nome_oficial": "CLÍNICA DA FAMÍLIA VILA OPERÁRIA"},
+    "cnr_odiceia": {"senha": "cnr_odiceia", "nome_oficial": "CONSULTORIO NA RUA DA CLINICA ODICEIA MORAES"},
+    "poli_santarita": {"senha": "poli_santarita", "nome_oficial": "POLICLÍNICA  SANTA RITA"},
+    "poli_dirceu": {"senha": "poli_dirceu", "nome_oficial": "POLICLÍNICA DIRCEU DE AQUINO RAMOS"},
+    "poli_domwalmor": {"senha": "poli_domwalmor", "nome_oficial": "POLICLÍNICA GERAL DE NOVA IGUAÇU (DOM WALMOR)"},
+    "poli_cabucu": {"senha": "poli_cabucu", "nome_oficial": "POLICLÍNICA MANOEL B. DE ALMEIDA (CABUÇU)"},
+    "super_dacyr": {"senha": "super_dacyr", "nome_oficial": "SUPERCLÍNICA DA FAMÍLIA DACYR SOARES - MORRO AGUDO"},
+    "ubs_moqueta": {"senha": "ubs_moqueta", "nome_oficial": "UBS ALBERTO SOBRAL (MOQUETÁ)"},
+    "ubs_austin": {"senha": "ubs_austin", "nome_oficial": "UBS AUSTIN"},
+    "ubs_ceramica": {"senha": "ubs_ceramica", "nome_oficial": "UBS CERÂMICA"},
+    "ubs_cobrex": {"senha": "ubs_cobrex", "nome_oficial": "UBS COBREX"},
+    "ubs_paraiso": {"senha": "ubs_paraiso", "nome_oficial": "UBS JARDIM PARAÍSO (Antiga Patrícia Marinho)"},
+    "ubs_santaeugenia": {"senha": "ubs_santaeugenia", "nome_oficial": "UBS JARDIM SANTA EUGÊNIA"},
+    "ubs_julia": {"senha": "ubs_julia", "nome_oficial": "UBS JÚLIA TÁVORA"},
+    "ubs_manoel": {"senha": "ubs_manoel", "nome_oficial": "UBS MANOEL REZENDE"},
+    "ubs_montelibano": {"senha": "ubs_montelibano", "nome_oficial": "UBS MONTE LÍBANO (PROF° RUTILHES DOS SANTOS)"},
+    "ubs_novabrasilia": {"senha": "ubs_novabrasilia", "nome_oficial": "UBS NOVA BRASÍLIA"},
+    "ubs_prata": {"senha": "ubs_prata", "nome_oficial": "UBS PRATA"},
+    "ubs_ranchofundo": {"senha": "ubs_ranchofundo", "nome_oficial": "UBS RANCHO FUNDO"},
+    "ubs_santaclara": {"senha": "ubs_santaclara", "nome_oficial": "UBS SANTA CLARA DE VILA NOVA"},
+    "ubs_vilajurema": {"senha": "ubs_vilajurema", "nome_oficial": "UBS VILA JUREMA"},
+    "uni_pedreira": {"senha": "uni_pedreira", "nome_oficial": "UNIDADE SHOPPING DA PEDREIRA"},
+    "usf_engenho": {"senha": "usf_engenho", "nome_oficial": "USF ENGENHO PEQUENO"},
+    "usf_lino": {"senha": "usf_lino", "nome_oficial": "USF LINO VILELA"},
+    "usf_k11": {"senha": "usf_k11", "nome_oficial": "USF PADRE MANOEL MONTEIRO (K11)"},
+    "usf_palhada": {"senha": "usf_palhada", "nome_oficial": "USF PALHADA"},
+    "usf_todos": {"senha": "usf_todos", "nome_oficial": "USF PARQUE TODOS OS SANTOS"},
+    "usf_rodilandia": {"senha": "usf_rodilandia", "nome_oficial": "USF RODILÂNDIA"},
+    "usf_guandu": {"senha": "usf_guandu", "nome_oficial": "USF SANTA CLARA DO GUANDÚ"},
+    "usf_valverde": {"senha": "usf_valverde", "nome_oficial": "USF VALVERDE"},
+    "usf_vilatania": {"senha": "usf_vilatania", "nome_oficial": "USF VILA TÂNIA"}
 }
 
-# =====================================================================
-# 2. MOTOR DE BUSCA (Aba 1 e Aba 2)
-# =====================================================================
-@st.cache_data(ttl=60)
-def carregar_todos_os_dados():
-    # IDs DA PLANILHA 
-    SHEET_ID = "1A6uPoNNsz-5SzDRvZZfurYxt7NOzv73Dtde-GEsoV6o" 
-    GID_PACIENTES = "0"
-    GID_EVO = "355108392" # <--- NÃO ESQUEÇA
-    
-    url_pacientes = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID_PACIENTES}"
-    url_evolucoes = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID_EVO}"
-    
-    df_pac = pd.read_csv(url_pacientes)
-    df_evo = pd.read_csv(url_evolucoes)
-    
-    df_pac.columns = df_pac.columns.str.strip()
-    df_evo.columns = df_evo.columns.str.strip()
-    
-    # Criar ID limpo para cruzamento (apenas números do CNS/CPF)
-    col_id_pac = [c for c in df_pac.columns if "CNS" in c or "CPF" in c][0]
-    df_pac["_id_limpo"] = df_pac[col_id_pac].astype(str).str.replace(r'\D', '', regex=True)
-    
-    col_id_evo = [c for c in df_evo.columns if "CNS" in c or "CPF" in c][0]
-    df_evo["_id_limpo"] = df_evo[col_id_evo].astype(str).str.replace(r'\D', '', regex=True)
-    
-    return df_pac, df_evo
+# 3. FUNÇÃO DE LOGIN
+def tela_login():
+    if "autenticado" not in st.session_state:
+        st.session_state["autenticado"] = False
 
-# Função auxiliar para encontrar os nomes dinâmicos das colunas da Aba Evolucoes
-def encontrar_coluna(df, palavras_chave):
-    for col in df.columns:
-        for palavra in palavras_chave:
-            if palavra.lower() in col.lower():
-                return col
-    return df.columns[0] # Fallback
+    if not st.session_state["autenticado"]:
+        st.markdown("<h1 style='text-align: center;'>🔐 Sistema SIG-ILTB</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center;'>Introduza as suas credenciais para aceder ao painel</p>", unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            with st.form("login"):
+                usuario = st.text_input("Utilizador (Login da Unidade ou Admin)").lower().strip()
+                senha = st.text_input("Senha", type="password").strip()
+                botao_entrar = st.form_submit_button("Entrar no Sistema")
+                
+                if botao_entrar:
+                    if usuario in USUARIOS and USUARIOS[usuario]["senha"] == senha:
+                        st.session_state["autenticado"] = True
+                        st.session_state["usuario_atual"] = usuario
+                        st.success("Acesso autorizado! A carregar...")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("Utilizador ou senha incorretos.")
+        return False
+    return True
 
-# =====================================================================
-# 3. TELA DE LOGIN E PAINEL
-# =====================================================================
-if "unidade_logada" not in st.session_state:
-    st.session_state["unidade_logada"] = None
+# 4. PAINEL PRINCIPAL
+if tela_login():
+    
+    st.markdown("""
+        <style>
+        .main { background-color: #f4f6f9; }
+        </style>
+        """, unsafe_allow_html=True)
 
-if st.session_state["unidade_logada"] is None:
-    st.title("🔒 Acesso Restrito - Monitoramento ILTB")
-    senha = st.text_input("Digite sua senha de acesso:", type="password")
-    if st.button("Entrar no Sistema"):
-        if senha in COFRE_DE_ACESSOS:
-            st.session_state["unidade_logada"] = COFRE_DE_ACESSOS[senha]
+    nome_unidade_atual = USUARIOS[st.session_state['usuario_atual']]["nome_oficial"]
+
+    st.title("🏥 Prontuário Digital SIG-ILTB")
+    st.caption(f"Unidade Ativa: {nome_unidade_atual}" if st.session_state['usuario_atual'] != 'heraldo_admin' else "Visão Geral - Administração Central")
+
+    SHEET_ID = "1cG2uey69Vb2nnu_n-m5VTEwKuAnvCs2OkaQIvN7Izs8"
+    
+    # --- COLE O SEU LINK DO GOOGLE FORMS DE EVOLUÇÃO AQUI ---
+    LINK_FORM_EVOLUCAO = "https://docs.google.com/forms/d/e/COLE_SEU_LINK_AQUI/viewform"
+
+    with st.sidebar:
+        st.image("https://cdn-icons-png.flaticon.com/512/1085/1085810.png", width=80)
+        st.markdown(f"**Logado como:** {st.session_state['usuario_atual']}")
+        if st.button('🔄 ATUALIZAR DADOS', use_container_width=True):
+            st.cache_data.clear()
             st.rerun()
-        else:
-            st.error("❌ Senha inválida.")
-else:
-    unidade = st.session_state["unidade_logada"]
-    
-    st.title("🏥 Gestão Municipal de Prontuários ILTB")
-    st.subheader(f"Perfil: {unidade}")
-    
-    if st.sidebar.button("Sair / Logout"):
-        st.session_state["unidade_logada"] = None
-        st.rerun()
-        
-    # BOTÃO MÁGICO DE SINCRONIZAÇÃO DA NUVEM
-    if st.sidebar.button("🔄 Sincronizar Dados Agora"):
-        st.cache_data.clear()
-        st.rerun()
+        if st.button('🚪 SAIR DO SISTEMA', use_container_width=True):
+            st.session_state["autenticado"] = False
+            st.rerun()
 
-    try:
-        df_pacientes, df_evolucoes = carregar_todos_os_dados()
-        
-        # Filtro por unidade
-        col_uni_tratamento = encontrar_coluna(df_pacientes, ["Unid", "Tratamento"])
-        if unidade != "TODAS":
-            df_pacientes = df_pacientes[df_pacientes[col_uni_tratamento] == unidade]
-
-        # --- FILTROS SUPERIORES ---
-        st.write("### 🔎 Filtros de Auditoria")
-        cf1, cf2 = st.columns(2)
-        
-        col_situacao = encontrar_coluna(df_pacientes, ["Situa"])
-        opcoes_sit = ["Todas"] + sorted(df_pacientes[col_situacao].dropna().astype(str).unique().tolist())
-        filtro_sit = cf1.selectbox("Situação do Tratamento:", opcoes_sit)
-        
-        df_filtrado = df_pacientes.copy()
-        if filtro_sit != "Todas":
-            df_filtrado = df_filtrado[df_filtrado[col_situacao] == filtro_sit]
-
-        # --- ABAS ---
-        aba1, aba2, aba3 = st.tabs(["📋 Lista Geral", "🔍 Prontuário Detalhado", "📑 Auditoria Geral"])
-
-        # Identificando colunas principais dinamicamente
-        col_nome = encontrar_coluna(df_filtrado, ["Nome de Reg", "Nome do Pac"])
-        col_data_notif = encontrar_coluna(df_filtrado, ["Data da Notif", "Data Notif"])
-        col_cns = encontrar_coluna(df_filtrado, ["CNS", "Cartão"])
-        col_esquema = encontrar_coluna(df_filtrado, ["Medicamento", "Esquema"])
-
-        with aba1:
-            st.metric("Pacientes no Filtro", len(df_filtrado))
-            colunas_ver = [col_data_notif, col_uni_tratamento, col_nome, col_cns, col_esquema, col_situacao]
-            colunas_ver = [c for c in colunas_ver if c in df_filtrado.columns] # Garante que existem
-            st.dataframe(df_filtrado[colunas_ver], use_container_width=True, hide_index=True)
-
-        with aba2:
-            st.write("### Pesquisa Individual e Acompanhamento Clínico")
-            df_filtrado["Busca"] = df_filtrado[col_nome].astype(str) + " | " + df_filtrado[col_cns].astype(str)
+    @st.cache_data(ttl=15)
+    def carregar_dados_oficiais():
+        try:
+            agora = int(time.time())
+            url_p = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Pacientes&nocache={agora}"
+            url_e = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Evolucoes&nocache={agora}"
             
-            lista_pacientes = sorted(df_filtrado["Busca"].dropna().astype(str).unique().tolist())
-            pac_sel = st.selectbox("Selecione o Paciente:", ["-- Selecione --"] + lista_pacientes)
+            df_p = pd.read_csv(url_p, on_bad_lines='skip')
+            df_e = pd.read_csv(url_e, on_bad_lines='skip')
+            
+            # Limpa os espaços invisíveis dos cabeçalhos das planilhas para garantir a leitura
+            df_p.columns = df_p.columns.str.strip()
+            df_e.columns = df_e.columns.str.strip()
+            
+            return df_p, df_e
+        except:
+            return None, None
 
-            if pac_sel != "-- Selecione --":
-                id_limpo_busca = "".join(filter(str.isdigit, pac_sel.split("|")[1]))
-                info_pac = df_pacientes[df_pacientes["_id_limpo"] == id_limpo_busca].iloc[0]
-                
-                st.info(f"📍 **Unidade de Notificação:** {info_pac.get(col_uni_tratamento, '-')}")
-                
-                c_a, c_b, c_c = st.columns(3)
-                c_a.write(f"**Paciente:** {info_pac.get(col_nome, '-')}")
-                c_b.write(f"**Início do TPT:** {info_pac.get(col_data_notif, '-')}")
-                c_c.write(f"**Status Atual:** {info_pac.get(col_situacao, '-')}")
-                
-                st.write("---")
-                
-                evos = df_evolucoes[df_evolucoes["_id_limpo"] == id_limpo_busca]
-                if evos.empty:
-                    st.warning("Sem evoluções clínicas registradas ou as colunas da planilha não foram encontradas.")
-                else:
-                    # Encontrar colunas de evolução
-                    col_evo_data = encontrar_coluna(evos, ["Data do Atend", "Data da Evol"])
-                    col_evo_tipo = encontrar_coluna(evos, ["Tipo de Evol", "Tipo/Mês"])
-                    col_evo_relato = encontrar_coluna(evos, ["Adesão", "Relato"])
-                    col_evo_conduta = encontrar_coluna(evos, ["Conduta", "Enfermagem"])
+    df_pacientes, df_evolucoes = carregar_dados_oficiais()
 
-                    for _, row in evos.sort_values(by=col_evo_data, ascending=False).iterrows():
-                        data_str = row.get(col_evo_data, 'S/D')
-                        tipo_str = row.get(col_evo_tipo, 'Evolução')
-                        relato_str = str(row.get(col_evo_relato, '-'))
-                        conduta_str = str(row.get(col_evo_conduta, '-'))
+    if df_pacientes is not None and not df_pacientes.empty:
+        
+        # Filtro de Unidade com base na coluna exata "Unidade De Tratamento"
+        if st.session_state['usuario_atual'] != 'heraldo_admin':
+            if "Unidade De Tratamento" in df_pacientes.columns:
+                df_pacientes = df_pacientes[df_pacientes["Unidade De Tratamento"].astype(str).str.contains(nome_unidade_atual, case=False, na=False)]
 
-                        with st.expander(f"🔹 {data_str} - {tipo_str}"):
-                            # O Pulo do Gato - Destaques Visuais no Python
-                            st.write(f"**Adesão, Queixas e Tolerância (Relato Clínico):**")
-                            st.write(relato_str)
+        tab_prontuario, tab_pacientes, tab_evolucoes = st.tabs(["🩺 Prontuário Longitudinal", "📋 Lista de Pacientes", "📈 Base Global"])
+        
+        # ==========================================
+        # ABA 1: PRONTUÁRIO LONGITUDINAL (ENGENHARIA EXATA)
+        # ==========================================
+        with tab_prontuario:
+            st.markdown("### 🔍 Busca de Prontuário")
+            
+            # Busca baseada no Nome exato da coluna
+            if "Nome Do Paciente" in df_pacientes.columns:
+                lista_pacientes = ["Selecione um paciente..."] + sorted(df_pacientes["Nome Do Paciente"].dropna().astype(str).unique().tolist())
+                paciente_selecionado = st.selectbox("Busque o paciente:", lista_pacientes, label_visibility="collapsed")
+
+                if paciente_selecionado != "Selecione um paciente...":
+                    d_pac = df_pacientes[df_pacientes["Nome Do Paciente"] == paciente_selecionado].iloc[0]
+                    
+                    # 1. Pega o ID (Cns_Cpf) que é a nossa "chave mestra" para conectar com as Evoluções
+                    paciente_id = str(d_pac.get("Cns_Cpf (Id)", "ID não encontrado"))
+                    
+                    # 2. Pega os dados exatos da Ficha (Aba 1)
+                    val_sit = str(d_pac.get("Situação Atual", "Em andamento"))
+                    val_ini = str(d_pac.get("Início Tpt", "-"))
+                    val_med = str(d_pac.get("Medicamento", "-"))
+                    
+                    # Como Posologia e Término não existem no Forms, deixamos um aviso discreto
+                    val_pos = "Conforme prescrição (Não mapeado no forms)"
+                    val_ter = "Calculado clinicamente"
+                    
+                    # 3. Puxa a Próxima Consulta da Aba de Evoluções!
+                    val_proxima_consulta = "-"
+                    if df_evolucoes is not None and not df_evolucoes.empty and "Cns_Cpf (Id)" in df_evolucoes.columns:
+                        # Filtra as evoluções APENAS deste paciente usando o ID
+                        hist_pac = df_evolucoes[df_evolucoes["Cns_Cpf (Id)"].astype(str) == paciente_id]
+                        if not hist_pac.empty:
+                            # Pega a última evolução registada (a linha mais ao fundo da planilha)
+                            ultima_evolucao = hist_pac.iloc[-1]
+                            val_proxima_consulta = str(ultima_evolucao.get("Data Da Próxima Consulta", "-"))
                             
-                            st.write("") # Espaço
+                            # Atualiza a situação caso tenha mudado na evolução recente
+                            nova_sit = str(ultima_evolucao.get("Nova Situação", ""))
+                            if nova_sit and nova_sit.lower() != "nan":
+                                val_sit = nova_sit
+                    
+                    # --- MONTAGEM DO CARTÃO DO PACIENTE ---
+                    st.markdown("---")
+                    with st.container(border=True):
+                        st.markdown(f"### 👤 {paciente_selecionado.upper()}")
+                        st.markdown(f"**ID de Ligação (CNS/CPF):** {paciente_id}")
+                        st.divider()
+                        
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            st.markdown(f"**Início TPT:** {val_ini}")
+                            st.markdown(f"**Tratamento (Esquema):** {val_med}")
+                            st.markdown(f"**Posologia:** {val_pos}")
+                        with c2:
+                            st.markdown(f"**Término Previsto:** {val_ter}")
+                            st.markdown(f"**Próxima Consulta:** {val_proxima_consulta}")
                             
-                            # Separa e destaca o ALERTA DE DROGA
-                            if "[ALERTA:" in conduta_str:
-                                st.error("⚠️ **ATENÇÃO:** Alteração no Esquema de Drogas reportada nesta consulta!")
-                                conduta_str = re.sub(r'\[ALERTA:.*?\]', '', conduta_str).strip()
+                            # Alertas de Situação
+                            sit_lower = val_sit.lower()
+                            if 'óbito' in sit_lower or 'obito' in sit_lower:
+                                st.error(f"**Situação:** {val_sit}")
+                            elif 'alta' in sit_lower or 'completo' in sit_lower or 'cura' in sit_lower:
+                                st.success(f"**Situação:** {val_sit}")
+                            elif 'interrup' in sit_lower or 'abandono' in sit_lower or 'adversa' in sit_lower:
+                                st.warning(f"**Situação:** {val_sit}")
+                            else:
+                                st.info(f"**Situação:** {val_sit}")
 
-                            # Separa e destaca a PRÓXIMA DATA
-                            prox_data_match = re.search(r'\[Próx.*?\]', conduta_str)
-                            if prox_data_match:
-                                texto_data = prox_data_match.group(0).replace('[', '').replace(']', '')
-                                st.warning(f"📅 **AGENDAMENTO:** {texto_data}")
-                                conduta_str = conduta_str.replace(prox_data_match.group(0), '').strip()
+                    # --- BOTÃO DE EVOLUÇÃO ---
+                    with st.expander("➕ Adicionar Evolução Diária / Mensal", expanded=False):
+                        st.info("Registe o atendimento clicando no botão abaixo.")
+                        st.link_button("📝 Preencher Evolução", LINK_FORM_EVOLUCAO, use_container_width=True)
 
-                            st.info(f"**Conduta de Enfermagem/Médica:**\n\n{conduta_str}")
+                    # --- HISTÓRICO DE EVOLUÇÕES (CRUZADO PELO ID) ---
+                    st.markdown("### 🗓️ Histórico Longitudinal de Evoluções")
+                    
+                    if df_evolucoes is not None and not df_evolucoes.empty and "Cns_Cpf (Id)" in df_evolucoes.columns:
+                        hist_pac = df_evolucoes[df_evolucoes["Cns_Cpf (Id)"].astype(str) == paciente_id]
+                        
+                        if not hist_pac.empty:
+                            # Inverte para mostrar a consulta mais recente no topo
+                            hist_pac = hist_pac.iloc[::-1]
 
-        with aba3:
-            st.write("### Relatório Cruzado de Evoluções")
-            df_audit = pd.merge(
-                df_filtrado[["_id_limpo", col_nome, col_uni_tratamento]],
-                df_evolucoes,
-                on="_id_limpo",
-                how="inner"
-            )
-            st.dataframe(df_audit.drop(columns=["_id_limpo"]), use_container_width=True, hide_index=True)
+                            for _, row in hist_pac.iterrows():
+                                r_data = str(row.get("Data Da Consulta", "Data não inf."))
+                                r_tipo = str(row.get("Tipo De Retorno (Mês)", "Rotina"))
+                                r_peso = str(row.get("Peso Corporal (kg)", "-"))
+                                r_sit = str(row.get("Nova Situação", "-"))
+                                r_prox = str(row.get("Data Da Próxima Consulta", "-"))
+                                r_relato = str(row.get("Relato Clínico", "Sem relatos registrados."))
+                                r_cond = str(row.get("Conduta", "Sem conduta registrada."))
 
-    except Exception as e:
-        st.error(f"Erro ao carregar os dados. Detalhe técnico: {e}")
+                                with st.container(border=True):
+                                    st.markdown(f"#### 📅 {r_data} | {r_tipo}")
+                                    st.markdown(f"**Situação:** {r_sit} &nbsp;&nbsp;|&nbsp;&nbsp; **Peso:** {r_peso} kg &nbsp;&nbsp;|&nbsp;&nbsp; **Próx. Consulta:** {r_prox}")
+                                    st.markdown(f"**Relato Clínico:**<br>{r_relato}", unsafe_allow_html=True)
+                                    st.markdown(f"**Conduta:**<br>{r_cond}", unsafe_allow_html=True)
+                        else:
+                            st.info("Nenhuma evolução foi submetida para este paciente ainda.")
+                    else:
+                        st.warning("A aba de Evoluções está vazia ou sem cabeçalhos válidos.")
+            else:
+                st.error("A coluna 'Nome Do Paciente' não foi encontrada na aba de Pacientes.")
+
+        with tab_pacientes:
+            st.dataframe(df_pacientes, use_container_width=True, hide_index=True)
+            
+        with tab_evolucoes:
+            if df_evolucoes is not None:
+                st.dataframe(df_evolucoes, use_container_width=True, hide_index=True)
+    else:
+        st.error("⚠️ Nenhum dado de paciente encontrado.")
