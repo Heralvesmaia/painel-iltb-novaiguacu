@@ -1,9 +1,16 @@
 import streamlit as st
 import pandas as pd
 import time
+import unicodedata
 
 # 1. CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="SIG-ILTB - Prontuário Eletrônico", layout="wide", page_icon="🔒")
+
+# Função auxiliar para buscas flexíveis (caso haja espaços acidentais)
+def normalizar_texto(texto):
+    if pd.isna(texto): return ""
+    texto = str(texto).strip().lower()
+    return ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
 
 # 2. CENTRAL DE ACESSOS
 USUARIOS = {
@@ -108,12 +115,7 @@ def tela_login():
 
 # 4. PAINEL PRINCIPAL
 if tela_login():
-    
-    st.markdown("""
-        <style>
-        .main { background-color: #f4f6f9; }
-        </style>
-        """, unsafe_allow_html=True)
+    st.markdown("""<style>.main { background-color: #f4f6f9; }</style>""", unsafe_allow_html=True)
 
     nome_unidade_atual = USUARIOS[st.session_state['usuario_atual']]["nome_oficial"]
 
@@ -121,8 +123,6 @@ if tela_login():
     st.caption(f"Unidade Ativa: {nome_unidade_atual}" if st.session_state['usuario_atual'] != 'heraldo_admin' else "Visão Geral - Administração Central")
 
     SHEET_ID = "1cG2uey69Vb2nnu_n-m5VTEwKuAnvCs2OkaQIvN7Izs8"
-    
-    # --- COLE O SEU LINK DO GOOGLE FORMS DE EVOLUÇÃO AQUI ---
     LINK_FORM_EVOLUCAO = "https://docs.google.com/forms/d/e/COLE_SEU_LINK_AQUI/viewform"
 
     with st.sidebar:
@@ -142,76 +142,81 @@ if tela_login():
             url_p = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Pacientes&nocache={agora}"
             url_e = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Evolucoes&nocache={agora}"
             
-            df_p = pd.read_csv(url_p, on_bad_lines='skip')
-            df_e = pd.read_csv(url_e, on_bad_lines='skip')
+            # Força a leitura como texto para evitar problemas com CPFs longos
+            df_p = pd.read_csv(url_p, on_bad_lines='skip', dtype=str).fillna("")
+            df_e = pd.read_csv(url_e, on_bad_lines='skip', dtype=str).fillna("")
             
-            # Limpa os espaços invisíveis dos cabeçalhos das planilhas para garantir a leitura
             df_p.columns = df_p.columns.str.strip()
             df_e.columns = df_e.columns.str.strip()
             
+            if "Cns_Cpf (Id)" in df_p.columns:
+                df_p["Cns_Cpf (Id)"] = df_p["Cns_Cpf (Id)"].str.replace(r'\.0$', '', regex=True).str.strip()
+            if "Cns_Cpf (Id)" in df_e.columns:
+                df_e["Cns_Cpf (Id)"] = df_e["Cns_Cpf (Id)"].str.replace(r'\.0$', '', regex=True).str.strip()
+                
             return df_p, df_e
-        except:
+        except Exception as e:
+            st.error(f"Erro na ligação: {e}")
             return None, None
 
     df_pacientes, df_evolucoes = carregar_dados_oficiais()
 
     if df_pacientes is not None and not df_pacientes.empty:
-        
-        # Filtro de Unidade com base na coluna exata "Unidade De Tratamento"
         if st.session_state['usuario_atual'] != 'heraldo_admin':
             if "Unidade De Tratamento" in df_pacientes.columns:
                 df_pacientes = df_pacientes[df_pacientes["Unidade De Tratamento"].astype(str).str.contains(nome_unidade_atual, case=False, na=False)]
 
         tab_prontuario, tab_pacientes, tab_evolucoes = st.tabs(["🩺 Prontuário Longitudinal", "📋 Lista de Pacientes", "📈 Base Global"])
         
-        # ==========================================
-        # ABA 1: PRONTUÁRIO LONGITUDINAL (ENGENHARIA EXATA)
-        # ==========================================
         with tab_prontuario:
             st.markdown("### 🔍 Busca de Prontuário")
             
-            # Busca baseada no Nome exato da coluna
             if "Nome Do Paciente" in df_pacientes.columns:
-                lista_pacientes = ["Selecione um paciente..."] + sorted(df_pacientes["Nome Do Paciente"].dropna().astype(str).unique().tolist())
+                nomes_validos = df_pacientes[df_pacientes["Nome Do Paciente"] != ""]["Nome Do Paciente"].astype(str).unique()
+                lista_pacientes = ["Selecione um paciente..."] + sorted(nomes_validos.tolist())
+                
                 paciente_selecionado = st.selectbox("Busque o paciente:", lista_pacientes, label_visibility="collapsed")
 
                 if paciente_selecionado != "Selecione um paciente...":
                     d_pac = df_pacientes[df_pacientes["Nome Do Paciente"] == paciente_selecionado].iloc[0]
                     
-                    # 1. Pega o ID (Cns_Cpf) que é a nossa "chave mestra" para conectar com as Evoluções
-                    paciente_id = str(d_pac.get("Cns_Cpf (Id)", "ID não encontrado"))
+                    # ID do Paciente
+                    paciente_id = str(d_pac.get("Cns_Cpf (Id)", "ID não encontrado")).strip()
                     
-                    # 2. Pega os dados exatos da Ficha (Aba 1)
+                    # Dados Base
                     val_sit = str(d_pac.get("Situação Atual", "Em andamento"))
                     val_ini = str(d_pac.get("Início Tpt", "-"))
                     val_med = str(d_pac.get("Medicamento", "-"))
                     
-                    # Como Posologia e Término não existem no Forms, deixamos um aviso discreto
-                    val_pos = "Conforme prescrição (Não mapeado no forms)"
-                    val_ter = "Calculado clinicamente"
+                    # Novos Dados (Gestante, Raça, Nacionalidade)
+                    val_gest = str(d_pac.get("Gestante", "Não inf."))
+                    val_raca = str(d_pac.get("Raça/Cor", "Não inf."))
+                    val_nac = str(d_pac.get("Nacionalidade", "Não inf."))
                     
-                    # 3. Puxa a Próxima Consulta da Aba de Evoluções!
-                    val_proxima_consulta = "-"
+                    val_pos = "(Apenas prescrito - não consta no cadastro)"
+                    val_ter = "(Cálculo clínico baseado no Início)"
+                    val_proxima_consulta = "Nenhum retorno registado ainda"
+                    
+                    # Cruzamento com Evoluções
+                    hist_pac = pd.DataFrame()
                     if df_evolucoes is not None and not df_evolucoes.empty and "Cns_Cpf (Id)" in df_evolucoes.columns:
-                        # Filtra as evoluções APENAS deste paciente usando o ID
-                        hist_pac = df_evolucoes[df_evolucoes["Cns_Cpf (Id)"].astype(str) == paciente_id]
+                        hist_pac = df_evolucoes[df_evolucoes["Cns_Cpf (Id)"] == paciente_id]
                         if not hist_pac.empty:
-                            # Pega a última evolução registada (a linha mais ao fundo da planilha)
                             ultima_evolucao = hist_pac.iloc[-1]
-                            val_proxima_consulta = str(ultima_evolucao.get("Data Da Próxima Consulta", "-"))
+                            prox = str(ultima_evolucao.get("Data Da Próxima Consulta", ""))
+                            if prox != "": val_proxima_consulta = prox
                             
-                            # Atualiza a situação caso tenha mudado na evolução recente
                             nova_sit = str(ultima_evolucao.get("Nova Situação", ""))
-                            if nova_sit and nova_sit.lower() != "nan":
-                                val_sit = nova_sit
+                            if nova_sit != "": val_sit = nova_sit
                     
-                    # --- MONTAGEM DO CARTÃO DO PACIENTE ---
+                    # --- CARTÃO DO PACIENTE ---
                     st.markdown("---")
                     with st.container(border=True):
                         st.markdown(f"### 👤 {paciente_selecionado.upper()}")
                         st.markdown(f"**ID de Ligação (CNS/CPF):** {paciente_id}")
                         st.divider()
                         
+                        # Primeira Linha de Dados
                         c1, c2 = st.columns(2)
                         with c1:
                             st.markdown(f"**Início TPT:** {val_ini}")
@@ -221,7 +226,6 @@ if tela_login():
                             st.markdown(f"**Término Previsto:** {val_ter}")
                             st.markdown(f"**Próxima Consulta:** {val_proxima_consulta}")
                             
-                            # Alertas de Situação
                             sit_lower = val_sit.lower()
                             if 'óbito' in sit_lower or 'obito' in sit_lower:
                                 st.error(f"**Situação:** {val_sit}")
@@ -231,40 +235,46 @@ if tela_login():
                                 st.warning(f"**Situação:** {val_sit}")
                             else:
                                 st.info(f"**Situação:** {val_sit}")
+                        
+                        st.divider()
+                        # Segunda Linha de Dados (Novos campos sociodemográficos)
+                        c3, c4, c5 = st.columns(3)
+                        with c3:
+                            st.markdown(f"**Gestante:** {val_gest}")
+                        with c4:
+                            st.markdown(f"**Raça/Cor:** {val_raca}")
+                        with c5:
+                            st.markdown(f"**Nacionalidade:** {val_nac}")
 
-                    # --- BOTÃO DE EVOLUÇÃO ---
                     with st.expander("➕ Adicionar Evolução Diária / Mensal", expanded=False):
                         st.info("Registe o atendimento clicando no botão abaixo.")
                         st.link_button("📝 Preencher Evolução", LINK_FORM_EVOLUCAO, use_container_width=True)
 
-                    # --- HISTÓRICO DE EVOLUÇÕES (CRUZADO PELO ID) ---
+                    # --- HISTÓRICO DE EVOLUÇÕES ---
                     st.markdown("### 🗓️ Histórico Longitudinal de Evoluções")
                     
-                    if df_evolucoes is not None and not df_evolucoes.empty and "Cns_Cpf (Id)" in df_evolucoes.columns:
-                        hist_pac = df_evolucoes[df_evolucoes["Cns_Cpf (Id)"].astype(str) == paciente_id]
-                        
-                        if not hist_pac.empty:
-                            # Inverte para mostrar a consulta mais recente no topo
-                            hist_pac = hist_pac.iloc[::-1]
+                    if not hist_pac.empty:
+                        hist_pac = hist_pac.iloc[::-1]
 
-                            for _, row in hist_pac.iterrows():
-                                r_data = str(row.get("Data Da Consulta", "Data não inf."))
-                                r_tipo = str(row.get("Tipo De Retorno (Mês)", "Rotina"))
-                                r_peso = str(row.get("Peso Corporal (kg)", "-"))
-                                r_sit = str(row.get("Nova Situação", "-"))
-                                r_prox = str(row.get("Data Da Próxima Consulta", "-"))
-                                r_relato = str(row.get("Relato Clínico", "Sem relatos registrados."))
-                                r_cond = str(row.get("Conduta", "Sem conduta registrada."))
+                        for _, row in hist_pac.iterrows():
+                            # Usa os cabeçalhos exatos informados
+                            r_data = str(row.get("Data Da Consulta", "Data não inf."))
+                            r_tipo = str(row.get("Tipo De Retorno (Mês)", "Rotina"))
+                            r_peso = str(row.get("Peso Corporal (kg)", "-"))
+                            r_med = str(row.get("Medicamento", "Mantido"))
+                            r_sit = str(row.get("Nova Situação", "-"))
+                            r_prox = str(row.get("Data Da Próxima Consulta", "-"))
+                            r_relato = str(row.get("Relato Clínico", "Sem relatos registrados."))
+                            r_cond = str(row.get("Conduta", "Sem conduta registrada."))
 
-                                with st.container(border=True):
-                                    st.markdown(f"#### 📅 {r_data} | {r_tipo}")
-                                    st.markdown(f"**Situação:** {r_sit} &nbsp;&nbsp;|&nbsp;&nbsp; **Peso:** {r_peso} kg &nbsp;&nbsp;|&nbsp;&nbsp; **Próx. Consulta:** {r_prox}")
-                                    st.markdown(f"**Relato Clínico:**<br>{r_relato}", unsafe_allow_html=True)
-                                    st.markdown(f"**Conduta:**<br>{r_cond}", unsafe_allow_html=True)
-                        else:
-                            st.info("Nenhuma evolução foi submetida para este paciente ainda.")
+                            with st.container(border=True):
+                                st.markdown(f"#### 📅 {r_data} | {r_tipo}")
+                                st.markdown(f"**Situação:** {r_sit} &nbsp;&nbsp;|&nbsp;&nbsp; **Peso:** {r_peso} kg &nbsp;&nbsp;|&nbsp;&nbsp; **Próx. Consulta:** {r_prox}")
+                                st.markdown(f"**Medicamento em Uso:** {r_med}")
+                                st.markdown(f"**Relato Clínico:**<br>{r_relato}", unsafe_allow_html=True)
+                                st.markdown(f"**Conduta:**<br>{r_cond}", unsafe_allow_html=True)
                     else:
-                        st.warning("A aba de Evoluções está vazia ou sem cabeçalhos válidos.")
+                        st.info("O paciente está registado, mas ainda não tem nenhuma evolução preenchida na aba 'Evolucoes'.")
             else:
                 st.error("A coluna 'Nome Do Paciente' não foi encontrada na aba de Pacientes.")
 
